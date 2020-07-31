@@ -1,0 +1,157 @@
+---
+title: "Series Trabajo ARIMA en R"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+###Ejemplo de Series de Tiempo en R
+```{r librerias, include=FALSE}
+
+
+library(flexdashboard)
+library(readxl)
+library(TSA)
+library(ggplot2)
+library(DescTools)
+library(nortest)
+library(lmtest)
+library(forecast)
+Tercer_Trabajo_de_Regresion <- read_excel("Tercer Trabajo de Regresión.xls.xls", 
+    range = "a4:b240")
+attach(Tercer_Trabajo_de_Regresion)
+```
+
+
+
+### Análisis gráfico inicial
+
+```{r analisis, echo=FALSE}
+serie <- ts(as.numeric(Tercer_Trabajo_de_Regresion$`Comercio a/`), frequency = 12, start = c(2000,1))
+plot.ts(serie)
+```
+
+
+*
+Como podemos observar, la serie de tiempo es creciente. Además, se trata de una serie cíclica. Los máximos locales se encuentran en los últimos meses del año, que refleja un mayor movimiento económico en el sector comercio en dichas fechas. Esto se traduce en la necesidad de más empleados. Por otra parte, resta definir el comportamiento de la varianza de la serie. Dado que no llegamos a una conclusión evidente, realizamos el análisis Box-Cox.
+
+### Descomponer serie
+```{r descomposición,echo=FALSE}
+serie.desc = decompose(serie)
+plot(serie.desc, xlab='Año')
+```
+
+### Box-Cox
+
+```{r box_Cox,echo=FALSE}
+a<-BoxCoxLambda(Tercer_Trabajo_de_Regresion$`Comercio a/`)
+```
+
+### Análisis gráfico Comercio^.5
+
+```{r analisis con boxcox,echo=FALSE}
+comerciobox <- Tercer_Trabajo_de_Regresion$`Comercio a/`^.5
+seriebox <- ts(comerciobox, frequency = 12, start = c(2000/1,1))
+plot.ts(seriebox)
+```
+
+```{r acf,echo=FALSE}
+acf(comerciobox)
+```
+
+### primera diferencia ciclica
+```{r dif cic,echo=FALSE}
+d1 <- diff(seriebox, lag = 12)
+plot.ts(d1)
+```
+
+### primera diferencia normal
+```{r dif nor,echo=FALSE}
+d2 <- diff(d1)
+plot.ts(d2)
+```
+
+
+
+### ACF de la segunda diferencia
+```{r acf con dif,echo=FALSE}
+acf(d2, type = "correlation", plot = TRUE,lag.max = 60)
+
+```
+A partir de la gráfica, comprobamos que ya no hay tendencia. Por otro lado, q = 4 y Q = 1. 
+Para conocer el resto de los parámetros de nuestro modelo, presentamos la FACP de X_t:
+
+
+### PACF de la segunda diferencia
+```{r pacf con dif,echo=FALSE}
+acf(d2, type = "partial", plot = TRUE,lag.max = 60)
+```
+De lo anterior, concluimos que p = 2 y P = 2.
+
+
+Partiendo de las gráficas anteriores, realizamos un modelo *SARIMA (2,1,4) x (2,1,1).* 
+Nos dimos cuenta que R tiene una función que calcula modelos ARIMA, llamada arima(), esta función realiza diferentes tipo de calculos, que difieren unos a otros en los coeficientes. 
+
+### Maximum likelihood, minimize conditional sum-of-squares
+Como su nombre lo dice, los coeficientes son obtenidos por máxima verosimilitud y posteriormente por suma de cuadrados.
+Se muestran los resultados:
+
+```{r cssml,echo=FALSE}
+arima(seriebox,order=c(2,1,4),seasonal=c(2,1,1),method="CSS-ML")
+
+```
+
+### Maximum likelihood
+Solamente se calculan los máximos verosímiles
+```{r ml,echo=FALSE}
+arima(seriebox,order=c(2,1,4),seasonal=c(2,1,1),method="ML")
+
+```
+
+### Minimum conditional sum-of-squares
+Solamente se calcula la suma de cuadrados mínimos
+```{r css,echo=FALSE}
+arima(seriebox,order=c(2,1,4),seasonal=c(2,1,1),method="CSS")
+
+```
+
+Como pudimos ver, se muestran varios modelos, ya es cuestión del criterio de la persona sobre el modelo al cual trabajar, en este trabajo nos quedaremos con el primer modelo de "CSS-ML" ya que es el que usa por default
+```{r echo=FALSE}
+coeftest(arima(serie,order=c(2,1,4),seasonal=c(2,1,1),method="CSS-ML"))
+```
+Para simplificar el trabajo y no poner tantas pruebas P-values, ponemos a continuación la final,
+quedandonos con un modelo SARIMA(0,1,1),(2,1,3)12
+```{r echo=FALSE}
+coeftest(arima(serie,order=c(0,1,1),seasonal=c(2,1,3),method="CSS-ML"))
+t=Arima(serie,order=c(0,1,1),seasonal=c(2,1,3),method="CSS-ML")
+```
+
+#Análisis de residuales
+#residual analysis 
+Mostraremos el análisis de residuales, sus gráficos, así como la prueba Ljung-Box, gráfica AFC
+```{r}
+tsdiag(arima(seriebox,order=c(0,1,1),seasonal=c(2,1,3),method="CSS"))
+```
+#Prueba Ljung-Box
+```{r echo=FALSE}
+Box.test(arima(d2,order=c(1,1,1),seasonal=c(2,1,1),method="CSS-ML")$residuals)
+```
+#Prueba de normalidad Anderson Darling
+```{r echo=FALSE}
+ad.test(arima(serie,order=c(0,1,1),seasonal=c(2,1,3),method="CSS-ML")$residuals)
+qqnorm(arima(serie,order=c(0,1,1),seasonal=c(2,1,3),method="CSS-ML")$residuals)
+qqline(arima(serie,order=c(0,1,1),seasonal=c(2,1,3),method="CSS-ML")$residuals)
+```
+
+Dado esto, tuvimos que los residuales se distriuyen normalmente,así que pasaremos al pronóstico:
+
+#Pronóstico
+Aquí se muestra el gráfico del pronóstico a 12 meses
+```{r echo=FALSE}
+pronostico <- forecast(t,h=12)
+plot(pronostico)
+
+```
+
+
